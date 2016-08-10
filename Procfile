@@ -1,1 +1,1 @@
-web: uwsgi UBERATCapp.wsgi
+web: uwsgi uwsgi.ini
