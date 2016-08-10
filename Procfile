@@ -1,1 +1,1 @@
-web: uwsgi UBERATCapp.wsgi --log-file
+web: uwsgi UBERATCapp.wsgi
