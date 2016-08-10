@@ -1,0 +1,1 @@
+web: gunicorn UBERTATCapp.wsgi:application
