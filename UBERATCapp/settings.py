@@ -108,7 +108,7 @@ WSGI_APPLICATION = 'UBERATCapp.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'USERNAME': os.environ.get('DJANGO_DB_USERNAME'),
+        'USER': os.environ.get('DJANGO_DB_USERNAME'),
         'NAME': os.environ.get('DJANGO_DB_NAME'),
         'PASSWORD': os.environ.get('DJANGO_DB_PASS'),
         'HOST': os.environ.get('DJANGO_DB_HOST'),
