@@ -1,1 +1,1 @@
-web: pwd
+web: uwsgi uwsgi.ini
