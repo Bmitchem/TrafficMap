@@ -1,1 +1,1 @@
-web: gunicorn UBERATCapp.wsgi --log-file -
+web: gunicorn UBERATCapp.wsgi
