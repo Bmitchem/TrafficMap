@@ -1,0 +1,342 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Map Data</title>
+    <link rel="stylesheet" href="{% static 'bootstrap/dist/css/bootstrap.min.css' %}"/>
+    <link rel="stylesheet"
+          href="{% static 'eonasdan-bootstrap-datetimepicker/build/css/bootstrap-datetimepicker.min.css' %}"/>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            height: 100%;
+        }
+
+        #map {
+            height: 100%;
+        }
+
+        #configure_form {
+            height: 18%;
+            padding-top: 2%;
+
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div id="configure_form">
+        <div class="row">
+            <div class='col-md-12'>
+                <div class='col-md-6 form-inline'>
+                    <div class="form-group">
+                        <label>Stat Date</label>
+                        <div class='input-group date' id='datetimepicker6'>
+                            <input type='text' class="form-control"/>
+                            <span class="input-group-addon">
+                                    <span class="glyphicon glyphicon-calendar"></span>
+                                </span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>End Date</label>
+                        <div class='input-group date' id='datetimepicker7'>
+                            <input type='text' class="form-control"/>
+                            <span class="input-group-addon">
+                                        <span class="glyphicon glyphicon-calendar"></span>
+                                    </span>
+                        </div>
+                    </div>
+                </div>
+                <div class='col-md-6 form-inline'>
+                    <div class="form-group col-md-5">
+                        <label class="">Min Lat <input type="number" data-role="min-lat" readonly/></label>
+                        <label class="">Min Lng <input type="number" data-role="min-lng" readonly/></label>
+                    </div>
+                    <div class="form-group col-md-5">
+                        <label class="">Max Lat <input type="number" data-role="max-lat" readonly/></label>
+                        <label class="">Max Lng <input type="number" data-role="max-lng" readonly/></label>
+                    </div>
+                    <div class="form-group col-md-2">
+                        <button class="btn btn-default" id="updateMapTrigger">
+                            Update Map
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <div class="row" style="height: 80%;">
+        <div id="map" class="col-md-12"></div>
+    </div>
+
+    <! -- loading modal -->
+    <div class="modal fade" id="loadingModal">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+              <span aria-hidden="true">&times;</span>
+            </button>
+            <h4 class="modal-title">Loading</h4>
+          </div>
+          <div class="modal-body">
+            <div class="progress">
+              <div class="progress-bar progress-bar-striped active" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" style="width: 100%">
+                <span class="sr-only">Loading</span>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+          </div>
+        </div><!-- /.modal-content -->
+      </div><!-- /.modal-dialog -->
+    </div><!-- /.modal -->
+</div>
+
+
+<script type="text/javascript" src="{% static 'jquery/dist/jquery.min.js' %}"></script>
+{#<script type="text/javascript" src="{% static 'jquery-migrate/jquery-migrate.min.js' %}"></script>#}
+<script type="text/javascript" src="{% static 'moment/min/moment.min.js' %}"></script>
+<script type="text/javascript" src="{% static 'bootstrap/dist/js/bootstrap.min.js' %}"></script>
+<script type="text/javascript"
+        src="{% static 'eonasdan-bootstrap-datetimepicker/build/js/bootstrap-datetimepicker.min.js' %}"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key={{ settings.GOOGLE_MAPS_API_KEY }}&libraries=visualization,drawing,geometry&callback=initMap"
+        async defer></script>
+<!-- form functions -->
+<script type="text/javascript">
+    $(function () {
+        $('#datetimepicker6').datetimepicker({
+            defaultDate: '2014/07/5 8:55:00',
+            minDate: '2014/04/01 00:00:00',
+            maxDate: '2014/07/31 23:55:00'
+        });
+        $('#datetimepicker7').datetimepicker({
+            minDate: '2014/04/01 00:00:00',
+            maxDate: '2014/07/31 23:55:00'
+        });
+        $("#datetimepicker6").on("dp.change", function (e) {
+            $('#datetimepicker7').data("DateTimePicker").minDate(e.date);
+        });
+        $("#datetimepicker7").on("dp.change", function (e) {
+            $('#datetimepicker6').data("DateTimePicker").maxDate(e.date);
+        });
+    });
+</script>
+<script>
+    var map, pickup_heatmap, drawingManager, polygon = null;
+
+
+    var pickup_heatmap_points = [];
+    var $min_lat_input = $('input[data-role=\'min-lat\']'),
+            $min_lng_input = $('input[data-role=\'min-lng\']'),
+            $max_lat_input = $('input[data-role=\'max-lat\']'),
+            $max_lng_input = $('input[data-role=\'max-lng\']');
+
+    var $start_datetime = $('#datetimepicker6').find('input'),
+        $end_datetime = $('#datetimepicker7').find('input');
+
+    var $update_map_button = $('#updateMapTrigger');
+
+    var rectangle_bounds = {
+        north: 40.7706,
+        south: 40.7521,
+        east: -73.9592,
+        west: -73.9920,
+    };
+
+    $update_map_button.on('click', function () {
+        update_grid();
+    });
+
+    function update_grid() {
+        var query_params = {
+            min_lat: $min_lat_input.val(),
+            min_long: $min_lng_input.val(),
+            max_lat: $max_lat_input.val(),
+            max_long: $max_lng_input.val(),
+            start: $start_datetime.val(),
+            end: $end_datetime.val()
+        };
+
+        if(query_params.start === query_params.end){
+            alert('Your query contains an identical Start and End datetime, please change one of them');
+            return
+        }
+        $('#loadingModal').modal('show');
+        $.ajax('/api/trip/', {
+            data: query_params,
+            success: function (data) {
+                console.log('Query Returned '+ data.count +' Events');
+                display_heatmap(data.results);
+                $('#loadingModal').modal('hide');
+            },
+            error: function(data){
+                alert(data.statusText);
+                $('#loadingModal').modal('hide');
+            }
+        });
+
+    }
+
+    /* plots trip data as destination mappable map markers */
+    function plot_trips(data) {
+        var old_trips = localStorage.getItem('map_markers');
+
+        if (old_trips !== null) {
+            try {
+                old_trips = JSON.parse(old_trips);
+            } catch (SyntaxError) {
+                old_trips = [];
+            }
+
+            for (var i = 0; i < old_trips.length; i++) {
+                var old_trip = old_trips[i];
+                if (old_trip.hasOwnProperty('pickup_marker') && old_trip.hasOwnProperty('dropoff_marker')) {
+                    old_trip.pickup_marker.setMap(null);
+                    old_trip.dropoff_marker.setMap(null);
+                }
+            }
+        }
+
+        var trips = [];
+        for (var i = 0; i < data.length; i++) {
+            var trip = data[i];
+
+            trip.pickup_marker = new google.maps.Marker({
+                position: {
+                    lat: parseFloat(trip.pickup_lat),
+                    lng: parseFloat(trip.pickup_long),
+                },
+                map: map,
+                title: 'Pickup ' + trip.start
+            });
+
+            trip.dropoff_marker = new google.maps.Marker({
+                position: {
+                    lat: parseFloat(trip.dropoff_lat),
+                    lng: parseFloat(trip.dropoff_long),
+                },
+                map: map,
+                title: 'Dropoff ' + trip.end
+            });
+            trips.push(trip);
+        }
+
+    }
+
+    /* plots tripdata as part of a heatmap */
+    function display_heatmap(data) {
+        pickup_heatmap_points = [];
+        var wasted_points = 0;
+        for (var i = 0; i < data.length; i++) {
+            var trip = data[i];
+            var point = new google.maps.LatLng(parseFloat(trip.pickup_lat), parseFloat(trip.pickup_long));
+            // Since we query only a bounding box, we need to do futher filtering here
+            if(google.maps.geometry.poly.containsLocation(point, polygon)){
+                pickup_heatmap_points.push(point);
+            }else{
+                wasted_points++;
+            }
+        }
+        pickup_heatmap.setData(pickup_heatmap_points);
+        console.log('Wasted Points ' + wasted_points + '/' + data.length);
+
+
+
+    }
+
+    /* This function simply updates those lat/lng boxes within the UI, I find these interesting and helpful for
+        diagnosing query param errors
+     */
+    function update_form(data) {
+        $min_lat_input.val(data.south);
+        $min_lng_input.val(data.west);
+        $max_lat_input.val(data.north);
+        $max_lng_input.val(data.east);
+    }
+
+    /* Callback function for google maps which instansiates our map and sets up our action listeners */
+    function initMap() {
+        map = new google.maps.Map(document.getElementById('map'), {
+            center: {lat: 40.7613, lng: -73.9765},
+            zoom: 14
+        });
+
+        drawingManager = new google.maps.drawing.DrawingManager({
+            drawingControlOptions: {
+            position: google.maps.ControlPosition.TOP_CENTER,
+            drawingModes: ['polygon',]
+          }
+        });
+        drawingManager.setMap(map);
+
+        pickup_heatmap = new google.maps.visualization.HeatmapLayer({
+            map: map
+        });
+
+        google.maps.event.addListener(drawingManager, 'overlaycomplete', function(event) {
+          if(event.type == 'polygon'){ // Polygon is the only available shape currently, check added future expansion
+              if(polygon !== null){
+                  polygon.setMap(null);
+              }
+              if(pickup_heatmap !== null){
+                  pickup_heatmap.setData([]);
+              }
+              polygon = event.overlay;
+          }
+        });
+
+        /*
+
+        By computing the bounding box of my polygon I can perform a very simply query to the backend,
+         and then do the more complex filtering using google's containsLocation() api on their polygon api
+
+        */
+        google.maps.event.addListener(drawingManager, 'overlaycomplete', function(event) {
+            var lat_list = [];
+            var lng_list = [];
+            var bounding_box = polygon.getPaths();
+              bounding_box.forEach(function(paths, i){
+                  var path_list = paths.getArray();
+                  for(var i = 0; i < path_list.length; i++){
+                        var xy = path_list[i];
+                        lat_list.push(xy.lat());
+                        lng_list.push(xy.lng())
+                  }
+
+              });
+
+
+            var max_lat = Math.max.apply(null, lat_list);
+            var max_lng = Math.max.apply(null, lng_list);
+
+            var min_lat = Math.min.apply(null, lat_list);
+            var min_lng = Math.min.apply(null, lng_list);
+
+            var query_params = {
+                south: min_lat,
+                west: min_lng,
+                north: max_lat,
+                east: max_lng
+            };
+            update_form(query_params);
+        });
+
+
+        update_form(rectangle_bounds);
+
+    }
+
+</script>
+</body>
+</html>
